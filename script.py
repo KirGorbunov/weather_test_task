@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import aiohttp
 import sqlalchemy.exc
 from sqlalchemy import Column, Float, Integer, String, DateTime
@@ -68,8 +70,58 @@ async def get_weather(latitude, longitude):
         async with session.get(weather_url, params=params) as response:
             if response.status == 200:
                 weather_data = await response.json()
-                print(weather_data)
                 return weather_data
             else:
                 print(f"Ошибка получения данных: {response.status}")
                 return None
+
+
+# Преобразование направления ветра в текстовый формат
+def wind_direction_to_text(degrees):
+    directions = [
+        "C", "СВ", "В", "ЮВ",
+        "Ю", "ЮЗ", "З", "СЗ"
+    ]
+    if degrees >= 337.5:
+        return "C"
+    index = int((degrees + 22.5) // 45)
+    return directions[index]
+
+
+# Функция для сохранения данных в базу данных
+async def save_weather_to_db(session, latitude, longitude, weather_data):
+    if "current" in weather_data:
+        current_weather = weather_data["current"]
+        temperature = current_weather.get("temperature_2m", None)  # Температура в градусах Цельсия
+        wind_speed = current_weather.get("wind_speed_10m", None)  # Скорость ветра в м/с
+        wind_direction = wind_direction_to_text(current_weather.get("wind_direction_10m", None))  # Направление ветра
+        pressure = current_weather.get("surface_pressure", None)  # Давление
+        precipitation = current_weather.get("precipitation", None)  # Осадки (мм)
+        rain = current_weather.get("rain", None)  # Дождь (мм)
+        showers = current_weather.get("showers", None)  # Ливень (мм)
+        snowfall = current_weather.get("snowfall", None)  # Снег (мм)
+        if pressure is not None:
+            pressure = pressure * 0.75006  # Перевод в мм рт. ст.
+        if snowfall is not None:
+            snowfall = snowfall * 10  # Перевод в мм
+
+        # Время из API или текущее время в UTC
+        time_str = current_weather.get("time", None)
+        timestamp = datetime.fromisoformat(time_str)
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+
+        new_weather = Weather(
+            timestamp=timestamp,
+            latitude=latitude,
+            longitude=longitude,
+            temperature=temperature,
+            wind_speed=wind_speed,
+            wind_direction=wind_direction,
+            pressure=pressure,
+            precipitation=precipitation,
+            rain=rain,
+            showers=showers,
+            snowfall=snowfall
+        )
+        session.add(new_weather)
+        await session.commit()
