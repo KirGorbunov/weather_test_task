@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from datetime import datetime, timezone
 
 import aiohttp
@@ -65,20 +66,21 @@ sync_session = sessionmaker(
 
 def init_db():
     """
-    Создание таблиц через синхронное подключение к базе данных.
+    Попытка создания таблиц через синхронное подключение к базе данных в бесконечном цикле.
     """
-    try:
-        # Создаем сессию
-        with sync_session() as session:
-            # Начинаем транзакцию
-            with session.begin():
-                # Создаем все таблицы
-                Base.metadata.create_all(bind=session.connection())
-        logger.info("Таблицы успешно созданы или уже существуют.")
-    except OperationalError as e:
-        logger.error(f"Ошибка доступа к базе данных: {e}")
-    except SQLAlchemyError as e:
-        logger.error(f"Ошибка работы с базой данных: {e}")
+    while True:
+        try:
+            with sync_session() as session:
+                with session.begin():
+                    Base.metadata.create_all(bind=session.connection())
+            logger.info("Таблицы успешно созданы или уже существуют.")
+            break
+        except OperationalError as e:
+            logger.error(f"Ошибка доступа к базе данных: {e}. Повторная попытка через 5 секунд...")
+            time.sleep(5)
+        except SQLAlchemyError as e:
+            logger.error(f"Ошибка работы с базой данных: {e}.")
+            break
 
 
 async def get_weather(latitude, longitude):
