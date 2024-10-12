@@ -4,6 +4,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+postgres_data/
 
 # C extensions
 *.so

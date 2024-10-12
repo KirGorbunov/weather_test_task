@@ -3,63 +3,33 @@ from datetime import datetime, timezone
 
 import aiohttp
 import pandas as pd
-import sqlalchemy.exc
 from sqlalchemy import Column, Float, Integer, String, DateTime, select
 from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Настройки базы данных PostgreSQL
-DATABASE_URL = "postgresql+asyncpg://weather_user:weather_password@localhost/weather_db"
-SYNC_DATABASE_URL = "postgresql://weather_user:weather_password@localhost/weather_db"
-
-# Создание базы данных с помощью SQLAlchemy
-Base = declarative_base()
+from settings import settings
 
 
-# Модель данных для хранения погоды
-class Weather(Base):
-    __tablename__ = "weather"
-
-    id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime(timezone=True), nullable=False)
-    latitude = Column(Float, nullable=False)
-    longitude = Column(Float, nullable=False)
-    temperature = Column(Float, nullable=True)
-    wind_speed = Column(Float, nullable=True)
-    wind_direction = Column(String, nullable=True)
-    pressure = Column(Float, nullable=True)
-    precipitation = Column(Float, nullable=True)
-    rain = Column(Float, nullable=True)
-    showers = Column(Float, nullable=True)
-    snowfall = Column(Float, nullable=True)
-
-
-# Движки для подключения к базе
-async_engine = create_async_engine(DATABASE_URL)
-sync_engine = create_engine(SYNC_DATABASE_URL, echo=True)
-
-async_session = sessionmaker(
-    async_engine, class_=AsyncSession, expire_on_commit=False
-)
-
-
-# Синхронный движок для создания таблиц
+# Функция для создания таблиц через синхронное подключение
 def init_db():
     try:
-        with sync_engine.begin() as conn:
-            Base.metadata.create_all(conn)
+        # Создаем сессию
+        with sync_session() as session:
+            # Начинаем транзакцию
+            with session.begin():
+                # Создаем все таблицы
+                Base.metadata.create_all(bind=session.connection())
         print("Таблицы успешно созданы или уже существуют.")
-    except sqlalchemy.exc.OperationalError as e:
+    except OperationalError as e:
         print(f"Ошибка доступа к базе данных: {e}")
-    except sqlalchemy.exc.SQLAlchemyError as e:
+    except SQLAlchemyError as e:
         print(f"Ошибка работы с базой данных: {e}")
 
 
 # Асинхронная функция для получения погоды
 async def get_weather(latitude, longitude):
-    weather_url = "https://api.open-meteo.com/v1/forecast"
-
     params = {
         "latitude": latitude,
         "longitude": longitude,
@@ -69,7 +39,7 @@ async def get_weather(latitude, longitude):
     }
 
     async with aiohttp.ClientSession() as session:
-        async with session.get(weather_url, params=params) as response:
+        async with session.get(settings.WEATHER_URL, params=params) as response:
             if response.status == 200:
                 weather_data = await response.json()
                 return weather_data
@@ -129,10 +99,10 @@ async def save_weather_to_db(session, latitude, longitude, weather_data):
         await session.commit()
 
 
-# Функция для получения последних 10 записей из базы данных
-async def get_last_10_weather(session):
-    # Создание запроса на выборку последних 10 записей
-    stmt = select(Weather).order_by(Weather.timestamp.desc()).limit(10)
+# Функция для получения последних записей из базы данных
+async def get_last_weather(session):
+    # Создание запроса на выборку последних записей
+    stmt = select(Weather).order_by(Weather.timestamp.desc()).limit(settings.ROW_NUMBER)
     result = await session.execute(stmt)
     return result.scalars().all()
 
@@ -155,33 +125,30 @@ def export_to_excel(data):
     } for row in data])
 
     # Сохраняем DataFrame в Excel-файл
-    df.to_excel("weather_data.xlsx", index=False)
+    df.to_excel(settings.FILE_NAME, index=False)
 
     print("Данные успешно экспортированы в файл 'weather_data.xlsx'.")
 
 
 # Функция для получения погоды каждые 3 минуты
-async def fetch_weather_every_3_minutes():
-    latitude = 52.52  # Широта (например, Москва)
-    longitude = 13.41  # Долгота (например, Москва)
-
+async def fetch_weather():
     async with async_session() as session:
         while True:
             # Получаем текущие данные о погоде
-            weather_data = await get_weather(latitude, longitude)
+            weather_data = await get_weather(settings.LATITUDE, settings.LATITUDE)
 
             # Сохраняем их в базу данных
-            await save_weather_to_db(session, latitude, longitude, weather_data)
+            await save_weather_to_db(session, settings.LATITUDE, settings.LATITUDE, weather_data)
 
             # Ждем 3 минуты перед следующим запросом
-            await asyncio.sleep(10)  # 180 секунд = 3 минуты
+            await asyncio.sleep(settings.PERIOD)  # 180 секунд = 3 минуты
 
 
 # Функция для экспорта данных в Excel по запросу
 async def export_weather_to_excel():
     async with async_session() as session:
-        last_10_data = await get_last_10_weather(session)
-        export_to_excel(last_10_data)
+        last_data = await get_last_weather(session)
+        export_to_excel(last_data)
 
 
 # Асинхронная функция для получения команд от пользователя
@@ -202,7 +169,7 @@ async def handle_user_input():
 # Основной блок для запуска программы
 async def main_loop():
     # Запускаем асинхронные задачи
-    weather_task = asyncio.create_task(fetch_weather_every_3_minutes())
+    weather_task = asyncio.create_task(fetch_weather())
     user_input_task = asyncio.create_task(handle_user_input())
 
     # Ожидаем завершения любой из задач (в данном случае пользовательский ввод завершает программу)
@@ -210,6 +177,48 @@ async def main_loop():
 
 
 if __name__ == "__main__":
+    # Настройки базы данных PostgreSQL
+    DATABASE_URL = f"postgresql+asyncpg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}/{settings.POSTGRES_DB}"
+    SYNC_DATABASE_URL = f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}/{settings.POSTGRES_DB}"
+
+    # Создание базы данных с помощью SQLAlchemy
+    Base = declarative_base()
+
+
+    # Модель данных для хранения погоды
+    class Weather(Base):
+        __tablename__ = "weather"
+
+        id = Column(Integer, primary_key=True)
+        timestamp = Column(DateTime(timezone=True), nullable=False)
+        latitude = Column(Float, nullable=False)
+        longitude = Column(Float, nullable=False)
+        temperature = Column(Float, nullable=True)
+        wind_speed = Column(Float, nullable=True)
+        wind_direction = Column(String, nullable=True)
+        pressure = Column(Float, nullable=True)
+        precipitation = Column(Float, nullable=True)
+        rain = Column(Float, nullable=True)
+        showers = Column(Float, nullable=True)
+        snowfall = Column(Float, nullable=True)
+
+
+    # Движки для подключения к базе
+    async_engine = create_async_engine(DATABASE_URL)
+    sync_engine = create_engine(SYNC_DATABASE_URL, echo=True)
+
+    # Сессия для асинхронного подключения
+    async_session = sessionmaker(
+        bind=async_engine,
+        class_=AsyncSession,
+        expire_on_commit=False
+    )
+
+    # Сессия для синхронного подключения
+    sync_session = sessionmaker(
+        bind=sync_engine,
+        expire_on_commit=False
+    )
+
     init_db()
-    # Запускаем основной цикл программы
     asyncio.run(main_loop())
