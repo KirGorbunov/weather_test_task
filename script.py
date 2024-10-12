@@ -24,8 +24,10 @@ SYNC_DATABASE_URL = f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_P
 Base = declarative_base()
 
 
-# Модель данных для хранения погоды
 class Weather(Base):
+    """
+    Модель данных для хранения информации о погоде.
+    """
     __tablename__ = "weather"
 
     id = Column(Integer, primary_key=True)
@@ -60,8 +62,10 @@ sync_session = sessionmaker(
 )
 
 
-# Функция для создания таблиц через синхронное подключение
 def init_db():
+    """
+    Создание таблиц через синхронное подключение к базе данных.
+    """
     try:
         # Создаем сессию
         with sync_session() as session:
@@ -76,8 +80,10 @@ def init_db():
         logger.error(f"Ошибка работы с базой данных: {e}")
 
 
-# Асинхронная функция для получения погоды
 async def get_weather(latitude, longitude):
+    """
+    Получение данных о погоде по API.
+    """
     params = {
         "latitude": latitude,
         "longitude": longitude,
@@ -96,8 +102,10 @@ async def get_weather(latitude, longitude):
                 return None
 
 
-# Преобразование направления ветра в текстовый формат
 def wind_direction_to_text(degrees):
+    """
+    Преобразование углового направления ветра в текстовый формат.
+    """
     directions = [
         "C", "СВ", "В", "ЮВ",
         "Ю", "ЮЗ", "З", "СЗ"
@@ -108,8 +116,10 @@ def wind_direction_to_text(degrees):
     return directions[index]
 
 
-# Функция для сохранения данных в базу данных
 async def save_weather_to_db(session, latitude, longitude, weather_data):
+    """
+    Сохранение полученных данных о погоде в базу данных.
+    """
     if "current" in weather_data:
         current_weather = weather_data["current"]
         temperature = current_weather.get("temperature_2m", None)  # Температура в градусах Цельсия
@@ -147,17 +157,20 @@ async def save_weather_to_db(session, latitude, longitude, weather_data):
         await session.commit()
 
 
-# Функция для получения последних записей из базы данных
 async def get_last_weather(session):
+    """
+    Получение последних записей о погоде из базы данных.
+    """
     # Создание запроса на выборку последних записей
     stmt = select(Weather).order_by(Weather.timestamp.desc()).limit(settings.ROW_NUMBER)
     result = await session.execute(stmt)
     return result.scalars().all()
 
 
-# Функция для экспорта данных в файл Excel
 def export_to_excel(data):
-    # Преобразуем данные в DataFrame
+    """
+    Экспорт данных о погоде в Excel файл.
+    """
     df = pd.DataFrame([{
         "Timestamp": row.timestamp.replace(tzinfo=None),
         "Latitude": row.latitude,
@@ -178,8 +191,10 @@ def export_to_excel(data):
     print("Данные успешно экспортированы в файл 'weather_data.xlsx'.")
 
 
-# Функция для получения погоды каждые 3 минуты
 async def fetch_weather():
+    """
+    Периодическое получение данных о погоде и их сохранение в базу данных.
+    """
     async with async_session() as session:
         while True:
             # Получаем текущие данные о погоде
@@ -192,15 +207,19 @@ async def fetch_weather():
             await asyncio.sleep(settings.PERIOD)
 
 
-# Функция для экспорта данных в Excel по запросу
 async def export_weather_to_excel():
+    """
+    Экспорт данных в Excel.
+    """
     async with async_session() as session:
         last_data = await get_last_weather(session)
         export_to_excel(last_data)
 
 
-# Асинхронная функция для получения команд от пользователя
 async def handle_user_input():
+    """
+    Получение и обработка команд от пользователя.
+    """
     while True:
         command = await asyncio.to_thread(input, "Введите команду ('export' для экспорта или 'exit' для выхода): ")
         if command == "export":
@@ -213,8 +232,10 @@ async def handle_user_input():
             print("Неизвестная команда. Попробуйте снова.")
 
 
-# Основной блок для запуска программы
 async def main_loop():
+    """
+    Основная функция для запуска асинхронных задач.
+    """
     weather_task = asyncio.create_task(fetch_weather())
     user_input_task = asyncio.create_task(handle_user_input())
 
