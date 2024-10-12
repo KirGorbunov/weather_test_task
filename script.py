@@ -1,3 +1,4 @@
+import aiohttp
 import sqlalchemy.exc
 from sqlalchemy import Column, Float, Integer, String, DateTime
 from sqlalchemy import create_engine
@@ -32,7 +33,7 @@ class Weather(Base):
 
 # Движки для подключения к базе
 async_engine = create_async_engine(DATABASE_URL)
-sync_engine = create_engine(SYNC_DATABASE_URL)
+sync_engine = create_engine(SYNC_DATABASE_URL, echo=True)
 
 async_session = sessionmaker(
     async_engine, class_=AsyncSession, expire_on_commit=False
@@ -49,3 +50,26 @@ def init_db():
         print(f"Ошибка доступа к базе данных: {e}")
     except sqlalchemy.exc.SQLAlchemyError as e:
         print(f"Ошибка работы с базой данных: {e}")
+
+
+# Асинхронная функция для получения погоды
+async def get_weather(latitude, longitude):
+    weather_url = "https://api.open-meteo.com/v1/forecast"
+
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "current": ["temperature_2m", "precipitation", "rain", "showers", "snowfall", "surface_pressure",
+                    "wind_speed_10m", "wind_direction_10m"],
+        "wind_speed_unit": "ms"
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(weather_url, params=params) as response:
+            if response.status == 200:
+                weather_data = await response.json()
+                print(weather_data)
+                return weather_data
+            else:
+                print(f"Ошибка получения данных: {response.status}")
+                return None
