@@ -13,7 +13,8 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from settings import settings
 
 # Настройки логирования
-logging.basicConfig(filename="weather_script.log", level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(filename="weather_script.log", level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Настройки подключения к БД
@@ -172,23 +173,24 @@ def export_to_excel(data):
     Экспорт данных о погоде в Excel файл.
     """
     df = pd.DataFrame([{
-        "Timestamp": row.timestamp.replace(tzinfo=None),
-        "Latitude": row.latitude,
-        "Longitude": row.longitude,
-        "Temperature": row.temperature,
-        "Wind Speed": row.wind_speed,
-        "Wind Direction": row.wind_direction,
-        "Pressure": row.pressure,
-        "Precipitation": row.precipitation,
-        "Rain": row.rain,
-        "Showers": row.showers,
-        "Snowfall": row.snowfall
+        "Дата и время": row.timestamp.replace(tzinfo=None),
+        "Широта": row.latitude,
+        "Долгота": row.longitude,
+        "Температура, град.": row.temperature,
+        "Скорость ветра, м/с": row.wind_speed,
+        "Направление ветра": row.wind_direction,
+        "Давление, мм рт. ст.": row.pressure,
+        "Осадки, мм": row.precipitation,
+        "Дождь, мм": row.rain,
+        "Ливень, мм": row.showers,
+        "Снег, мм": row.snowfall
     } for row in data])
 
+    current_datetime = datetime.now().strftime('%Y%m%d_%H%M%S')
     # Сохраняем DataFrame в Excel-файл
-    df.to_excel(settings.FILE_NAME, index=False)
+    df.to_excel(f"{settings.FILE_NAME}_{current_datetime}.xlsx", index=False)
 
-    print("Данные успешно экспортированы в файл 'weather_data.xlsx'.")
+    print(f"Данные успешно экспортированы в файл {settings.FILE_NAME}_{current_datetime}.xlsx'.")
 
 
 async def fetch_weather():
