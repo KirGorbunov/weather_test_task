@@ -11,6 +11,49 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 from settings import settings
 
+# Настройки подключения к БД
+DATABASE_URL = f"postgresql+asyncpg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}/{settings.POSTGRES_DB}"
+SYNC_DATABASE_URL = f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}/{settings.POSTGRES_DB}"
+
+# Создание базы данных с помощью SQLAlchemy
+Base = declarative_base()
+
+
+# Модель данных для хранения погоды
+class Weather(Base):
+    __tablename__ = "weather"
+
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime(timezone=True), nullable=False)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    temperature = Column(Float, nullable=True)
+    wind_speed = Column(Float, nullable=True)
+    wind_direction = Column(String, nullable=True)
+    pressure = Column(Float, nullable=True)
+    precipitation = Column(Float, nullable=True)
+    rain = Column(Float, nullable=True)
+    showers = Column(Float, nullable=True)
+    snowfall = Column(Float, nullable=True)
+
+
+# Движки для подключения к базе
+async_engine = create_async_engine(DATABASE_URL)
+sync_engine = create_engine(SYNC_DATABASE_URL, echo=True)
+
+# Сессия для асинхронного подключения
+async_session = sessionmaker(
+    bind=async_engine,
+    class_=AsyncSession,
+    expire_on_commit=False
+)
+
+# Сессия для синхронного подключения
+sync_session = sessionmaker(
+    bind=sync_engine,
+    expire_on_commit=False
+)
+
 
 # Функция для создания таблиц через синхронное подключение
 def init_db():
@@ -137,11 +180,11 @@ async def fetch_weather():
             # Получаем текущие данные о погоде
             weather_data = await get_weather(settings.LATITUDE, settings.LATITUDE)
 
-            # Сохраняем их в базу данных
+            # Сохраняем данных в БД
             await save_weather_to_db(session, settings.LATITUDE, settings.LATITUDE, weather_data)
 
-            # Ждем 3 минуты перед следующим запросом
-            await asyncio.sleep(settings.PERIOD)  # 180 секунд = 3 минуты
+            # Ожидание перед следующим запросом
+            await asyncio.sleep(settings.PERIOD)
 
 
 # Функция для экспорта данных в Excel по запросу
@@ -154,7 +197,6 @@ async def export_weather_to_excel():
 # Асинхронная функция для получения команд от пользователя
 async def handle_user_input():
     while True:
-        # Явный вывод приглашения перед получением ввода
         command = await asyncio.to_thread(input, "Введите команду ('export' для экспорта или 'exit' для выхода): ")
         if command == "export":
             print("Экспортируем последние 10 записей в Excel...")
@@ -168,57 +210,13 @@ async def handle_user_input():
 
 # Основной блок для запуска программы
 async def main_loop():
-    # Запускаем асинхронные задачи
     weather_task = asyncio.create_task(fetch_weather())
     user_input_task = asyncio.create_task(handle_user_input())
 
-    # Ожидаем завершения любой из задач (в данном случае пользовательский ввод завершает программу)
+    # Отслеживание завершения любой из асинхронных тасков
     await asyncio.wait([weather_task, user_input_task], return_when=asyncio.FIRST_COMPLETED)
 
 
 if __name__ == "__main__":
-    # Настройки базы данных PostgreSQL
-    DATABASE_URL = f"postgresql+asyncpg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}/{settings.POSTGRES_DB}"
-    SYNC_DATABASE_URL = f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}/{settings.POSTGRES_DB}"
-
-    # Создание базы данных с помощью SQLAlchemy
-    Base = declarative_base()
-
-
-    # Модель данных для хранения погоды
-    class Weather(Base):
-        __tablename__ = "weather"
-
-        id = Column(Integer, primary_key=True)
-        timestamp = Column(DateTime(timezone=True), nullable=False)
-        latitude = Column(Float, nullable=False)
-        longitude = Column(Float, nullable=False)
-        temperature = Column(Float, nullable=True)
-        wind_speed = Column(Float, nullable=True)
-        wind_direction = Column(String, nullable=True)
-        pressure = Column(Float, nullable=True)
-        precipitation = Column(Float, nullable=True)
-        rain = Column(Float, nullable=True)
-        showers = Column(Float, nullable=True)
-        snowfall = Column(Float, nullable=True)
-
-
-    # Движки для подключения к базе
-    async_engine = create_async_engine(DATABASE_URL)
-    sync_engine = create_engine(SYNC_DATABASE_URL, echo=True)
-
-    # Сессия для асинхронного подключения
-    async_session = sessionmaker(
-        bind=async_engine,
-        class_=AsyncSession,
-        expire_on_commit=False
-    )
-
-    # Сессия для синхронного подключения
-    sync_session = sessionmaker(
-        bind=sync_engine,
-        expire_on_commit=False
-    )
-
     init_db()
     asyncio.run(main_loop())
