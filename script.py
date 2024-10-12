@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
 
 import aiohttp
+import pandas as pd
 import sqlalchemy.exc
-from sqlalchemy import Column, Float, Integer, String, DateTime
+from sqlalchemy import Column, Float, Integer, String, DateTime, select
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -125,3 +126,34 @@ async def save_weather_to_db(session, latitude, longitude, weather_data):
         )
         session.add(new_weather)
         await session.commit()
+
+
+# Функция для получения последних 10 записей из базы данных
+async def get_last_10_weather(session):
+    # Создание запроса на выборку последних 10 записей
+    stmt = select(Weather).order_by(Weather.timestamp.desc()).limit(10)
+    result = await session.execute(stmt)
+    return result.scalars().all()
+
+
+# Функция для экспорта данных в файл Excel
+def export_to_excel(data):
+    # Преобразуем данные в DataFrame
+    df = pd.DataFrame([{
+        "Timestamp": row.timestamp.replace(tzinfo=None),
+        "Latitude": row.latitude,
+        "Longitude": row.longitude,
+        "Temperature": row.temperature,
+        "Wind Speed": row.wind_speed,
+        "Wind Direction": row.wind_direction,
+        "Pressure": row.pressure,
+        "Precipitation": row.precipitation,
+        "Rain": row.rain,
+        "Showers": row.showers,
+        "Snowfall": row.snowfall
+    } for row in data])
+
+    # Сохраняем DataFrame в Excel-файл
+    df.to_excel("weather_data.xlsx", index=False)
+
+    print("Данные успешно экспортированы в файл 'weather_data.xlsx'.")
