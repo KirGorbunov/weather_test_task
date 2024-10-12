@@ -104,7 +104,7 @@ async def get_weather(latitude, longitude):
 
 def wind_direction_to_text(degrees):
     """
-    Преобразование углового направления ветра в текстовый формат.
+    Преобразование направления ветра в текстовый формат.
     """
     directions = [
         "C", "СВ", "В", "ЮВ",
