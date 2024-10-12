@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 
 import aiohttp
@@ -157,3 +158,58 @@ def export_to_excel(data):
     df.to_excel("weather_data.xlsx", index=False)
 
     print("Данные успешно экспортированы в файл 'weather_data.xlsx'.")
+
+
+# Функция для получения погоды каждые 3 минуты
+async def fetch_weather_every_3_minutes():
+    latitude = 52.52  # Широта (например, Москва)
+    longitude = 13.41  # Долгота (например, Москва)
+
+    async with async_session() as session:
+        while True:
+            # Получаем текущие данные о погоде
+            weather_data = await get_weather(latitude, longitude)
+
+            # Сохраняем их в базу данных
+            await save_weather_to_db(session, latitude, longitude, weather_data)
+
+            # Ждем 3 минуты перед следующим запросом
+            await asyncio.sleep(10)  # 180 секунд = 3 минуты
+
+
+# Функция для экспорта данных в Excel по запросу
+async def export_weather_to_excel():
+    async with async_session() as session:
+        last_10_data = await get_last_10_weather(session)
+        export_to_excel(last_10_data)
+
+
+# Асинхронная функция для получения команд от пользователя
+async def handle_user_input():
+    while True:
+        # Явный вывод приглашения перед получением ввода
+        command = await asyncio.to_thread(input, "Введите команду ('export' для экспорта или 'exit' для выхода): ")
+        if command == "export":
+            print("Экспортируем последние 10 записей в Excel...")
+            await export_weather_to_excel()
+        elif command == "exit":
+            print("Завершение программы.")
+            break
+        else:
+            print("Неизвестная команда. Попробуйте снова.")
+
+
+# Основной блок для запуска программы
+async def main_loop():
+    # Запускаем асинхронные задачи
+    weather_task = asyncio.create_task(fetch_weather_every_3_minutes())
+    user_input_task = asyncio.create_task(handle_user_input())
+
+    # Ожидаем завершения любой из задач (в данном случае пользовательский ввод завершает программу)
+    await asyncio.wait([weather_task, user_input_task], return_when=asyncio.FIRST_COMPLETED)
+
+
+if __name__ == "__main__":
+    init_db()
+    # Запускаем основной цикл программы
+    asyncio.run(main_loop())
