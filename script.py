@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime, timezone
 
 import aiohttp
@@ -10,6 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 from settings import settings
+
+# Настройки логирования
+logging.basicConfig(filename="weather_script.log", level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Настройки подключения к БД
 DATABASE_URL = f"postgresql+asyncpg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}/{settings.POSTGRES_DB}"
@@ -39,7 +44,7 @@ class Weather(Base):
 
 # Движки для подключения к базе
 async_engine = create_async_engine(DATABASE_URL)
-sync_engine = create_engine(SYNC_DATABASE_URL, echo=True)
+sync_engine = create_engine(SYNC_DATABASE_URL)
 
 # Сессия для асинхронного подключения
 async_session = sessionmaker(
@@ -64,11 +69,11 @@ def init_db():
             with session.begin():
                 # Создаем все таблицы
                 Base.metadata.create_all(bind=session.connection())
-        print("Таблицы успешно созданы или уже существуют.")
+        logger.info("Таблицы успешно созданы или уже существуют.")
     except OperationalError as e:
-        print(f"Ошибка доступа к базе данных: {e}")
+        logger.error(f"Ошибка доступа к базе данных: {e}")
     except SQLAlchemyError as e:
-        print(f"Ошибка работы с базой данных: {e}")
+        logger.error(f"Ошибка работы с базой данных: {e}")
 
 
 # Асинхронная функция для получения погоды
@@ -87,7 +92,7 @@ async def get_weather(latitude, longitude):
                 weather_data = await response.json()
                 return weather_data
             else:
-                print(f"Ошибка получения данных: {response.status}")
+                logger.error(f"Ошибка получения данных: {response.status}")
                 return None
 
 
@@ -199,7 +204,7 @@ async def handle_user_input():
     while True:
         command = await asyncio.to_thread(input, "Введите команду ('export' для экспорта или 'exit' для выхода): ")
         if command == "export":
-            print("Экспортируем последние 10 записей в Excel...")
+            print(f"Экспортируем последние {settings.ROW_NUMBER} записей в Excel...")
             await export_weather_to_excel()
         elif command == "exit":
             print("Завершение программы.")
