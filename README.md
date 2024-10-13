@@ -9,7 +9,7 @@
 1. Перейти в директорию в которой расположен скрипт
 2. Установить зависимости: pip install -r requirements.txt
 3. Скопировать .env.example и переименовать копию в .env: cp .env.example .env
-4. Запустить БД Postgres внутри docker-контейнера: docker composer up -d
+4. Запустить БД Postgres внутри docker-контейнера: docker compose up -d
 5. Подождать минуту, чтобы БД успела завершить инициализацию
 6. Запустить скрипт: python script.py
 7. Для сохранения excel-файла ввести в консоль команду export
