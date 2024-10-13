@@ -2,6 +2,7 @@ import asyncio
 import logging
 import time
 from datetime import datetime, timezone
+from typing import NoReturn
 
 import aiohttp
 import pandas as pd
@@ -19,7 +20,7 @@ logging.basicConfig(filename="weather_script.log", level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 # Настройки подключения к БД
-DATABASE_URL = f"postgresql+asyncpg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}/{settings.POSTGRES_DB}"
+ASYNC_DATABASE_URL = f"postgresql+asyncpg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}/{settings.POSTGRES_DB}"
 SYNC_DATABASE_URL = f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}/{settings.POSTGRES_DB}"
 
 # Создание базы данных с помощью SQLAlchemy
@@ -47,7 +48,7 @@ class Weather(Base):
 
 
 # Движки для подключения к базе
-async_engine = create_async_engine(DATABASE_URL)
+async_engine = create_async_engine(ASYNC_DATABASE_URL)
 sync_engine = create_engine(SYNC_DATABASE_URL)
 
 # Сессия для асинхронного подключения
@@ -64,7 +65,7 @@ sync_session = sessionmaker(
 )
 
 
-def init_db():
+def init_db() -> NoReturn:
     """
     Попытка создания таблиц через синхронное подключение к базе данных в бесконечном цикле.
     """
@@ -83,7 +84,7 @@ def init_db():
             break
 
 
-async def get_weather(latitude, longitude):
+async def get_weather(latitude: float, longitude: float) -> dict | None:
     """
     Получение данных о погоде по API.
     """
@@ -105,21 +106,23 @@ async def get_weather(latitude, longitude):
                 return None
 
 
-def wind_direction_to_text(degrees):
+def wind_direction_to_text(degrees: float) -> str | None:
     """
     Преобразование направления ветра в текстовый формат.
     """
-    directions = [
-        "C", "СВ", "В", "ЮВ",
-        "Ю", "ЮЗ", "З", "СЗ"
-    ]
-    if degrees >= 337.5:
+    directions = ["C", "СВ", "В", "ЮВ", "Ю", "ЮЗ", "З", "СЗ"]
+    if degrees < 0 or degrees > 360:
+        return None
+    elif degrees >= 337.5:
         return "C"
     index = int((degrees + 22.5) // 45)
     return directions[index]
 
 
-async def save_weather_to_db(session, latitude, longitude, weather_data):
+async def save_weather_to_db(session: AsyncSession,
+                             latitude: float,
+                             longitude: float,
+                             weather_data: dict | None) -> NoReturn:
     """
     Сохранение полученных данных о погоде в базу данных.
     """
@@ -127,21 +130,23 @@ async def save_weather_to_db(session, latitude, longitude, weather_data):
         current_weather = weather_data["current"]
         temperature = current_weather.get("temperature_2m", None)  # Температура в градусах Цельсия
         wind_speed = current_weather.get("wind_speed_10m", None)  # Скорость ветра в м/с
-        wind_direction = wind_direction_to_text(current_weather.get("wind_direction_10m", None))  # Направление ветра
-        pressure = current_weather.get("surface_pressure", None)  # Давление
+        wind_direction = current_weather.get("wind_direction_10m", None)  # Направление ветра в градусах
+        pressure = current_weather.get("surface_pressure", None)  # Давление в гектопаскалях
         precipitation = current_weather.get("precipitation", None)  # Осадки (мм)
         rain = current_weather.get("rain", None)  # Дождь (мм)
         showers = current_weather.get("showers", None)  # Ливень (мм)
         snowfall = current_weather.get("snowfall", None)  # Снег (мм)
+        timestamp = current_weather.get("time", None)
+        # Параметры требующие преобразования:
+        if wind_direction is not None:
+            wind_direction = wind_direction_to_text(float(wind_direction)) # Преобразование в текстовый формат
         if pressure is not None:
             pressure = pressure * 0.75006  # Перевод в мм рт. ст.
         if snowfall is not None:
             snowfall = snowfall * 10  # Перевод в мм
-
-        # Время из API или текущее время в UTC
-        time_str = current_weather.get("time", None)
-        timestamp = datetime.fromisoformat(time_str)
-        timestamp = timestamp.replace(tzinfo=timezone.utc)
+        if timestamp is not None:
+            timestamp = datetime.fromisoformat(timestamp)
+            timestamp = timestamp.replace(tzinfo=timezone.utc)  # время в UTC
 
         new_weather = Weather(
             timestamp=timestamp,
@@ -160,17 +165,16 @@ async def save_weather_to_db(session, latitude, longitude, weather_data):
         await session.commit()
 
 
-async def get_last_weather(session):
+async def get_last_weather(session: AsyncSession) -> list[Weather]:
     """
     Получение последних записей о погоде из базы данных.
     """
-    # Создание запроса на выборку последних записей
     stmt = select(Weather).order_by(Weather.timestamp.desc()).limit(settings.ROW_NUMBER)
     result = await session.execute(stmt)
     return result.scalars().all()
 
 
-def export_to_excel(data):
+def export_to_excel(data: list[Weather]) -> NoReturn:
     """
     Экспорт данных о погоде в Excel файл.
     """
@@ -189,13 +193,13 @@ def export_to_excel(data):
     } for row in data])
 
     current_datetime = datetime.now().strftime('%Y%m%d_%H%M%S')
-    # Сохраняем DataFrame в Excel-файл
+    # Сохранение DataFrame в Excel-файл
     df.to_excel(f"{settings.FILE_NAME}_{current_datetime}.xlsx", index=False)
 
     print(f"Данные успешно экспортированы в файл {settings.FILE_NAME}_{current_datetime}.xlsx'.")
 
 
-async def fetch_weather():
+async def fetch_weather() -> NoReturn:
     """
     Периодическое получение данных о погоде и их сохранение в базу данных.
     """
@@ -211,7 +215,7 @@ async def fetch_weather():
             await asyncio.sleep(settings.PERIOD)
 
 
-async def export_weather_to_excel():
+async def export_weather_to_excel() -> NoReturn:
     """
     Экспорт данных в Excel.
     """
@@ -220,7 +224,7 @@ async def export_weather_to_excel():
         export_to_excel(last_data)
 
 
-async def handle_user_input():
+async def handle_user_input() -> NoReturn:
     """
     Получение и обработка команд от пользователя.
     """
@@ -236,7 +240,7 @@ async def handle_user_input():
             print("Неизвестная команда. Попробуйте снова.")
 
 
-async def main_loop():
+async def main_loop() -> NoReturn:
     """
     Основная функция для запуска асинхронных задач.
     """
