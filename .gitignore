@@ -1,5 +1,5 @@
 *.xlsx
-!.weather_data_20241013_101236.xlsx
+!weather_data_20241013_101236.xlsx
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
