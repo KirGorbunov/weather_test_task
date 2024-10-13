@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     PERIOD: int = 180
 
     # Настройки выгрузки:
-    FILE_NAME: str = "weather_data.xlsx"
+    FILE_NAME: str = "weather_data"
     ROW_NUMBER: int = 10
 
 

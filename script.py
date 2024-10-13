@@ -6,11 +6,11 @@ from typing import NoReturn
 
 import aiohttp
 import pandas as pd
-from sqlalchemy import Column, Float, Integer, String, DateTime, select
-from sqlalchemy import create_engine
+from sqlalchemy import (Column, DateTime, Float, Integer, String,
+                        create_engine, select)
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 from settings import settings
 
@@ -18,10 +18,6 @@ from settings import settings
 logging.basicConfig(filename="weather_script.log", level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-# Настройки подключения к БД
-ASYNC_DATABASE_URL = f"postgresql+asyncpg://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}/{settings.POSTGRES_DB}"
-SYNC_DATABASE_URL = f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}/{settings.POSTGRES_DB}"
 
 # Создание базы данных с помощью SQLAlchemy
 Base = declarative_base()
@@ -46,6 +42,15 @@ class Weather(Base):
     showers = Column(Float, nullable=True)
     snowfall = Column(Float, nullable=True)
 
+
+# Настройки подключения к БД
+db_user = settings.POSTGRES_USER
+db_pwd = settings.POSTGRES_PASSWORD
+db_host = settings.POSTGRES_HOST
+db_name = settings.POSTGRES_DB
+
+ASYNC_DATABASE_URL = f"postgresql+asyncpg://{db_user}:{db_pwd}@{db_host}/{db_name}"
+SYNC_DATABASE_URL = f"postgresql://{db_user}:{db_pwd}@{db_host}/{db_name}"
 
 # Движки для подключения к базе
 async_engine = create_async_engine(ASYNC_DATABASE_URL)
@@ -139,7 +144,7 @@ async def save_weather_to_db(session: AsyncSession,
         timestamp = current_weather.get("time", None)
         # Параметры требующие преобразования:
         if wind_direction is not None:
-            wind_direction = wind_direction_to_text(float(wind_direction)) # Преобразование в текстовый формат
+            wind_direction = wind_direction_to_text(float(wind_direction))  # Преобразование в текстовый формат
         if pressure is not None:
             pressure = pressure * 0.75006  # Перевод в мм рт. ст.
         if snowfall is not None:
